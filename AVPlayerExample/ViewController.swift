@@ -10,7 +10,11 @@ import AVKit
 
 class ViewController: UIViewController {
     var videoPlayer : AVPlayer?
-    private var timeObserverToken: Any?
+    
+    private var videoPlayerTimeObserverToken : Any?
+    private var videoPlayerTimeControlStatusObserver : NSKeyValueObservation?
+    
+    private var videoPlayerEndedObserver : NSObjectProtocol?
     
     static let contentURL : URL! = URL(string:"https://devstreaming-cdn.apple.com/videos/streaming/examples/bipbop_4x3/bipbop_4x3_variant.m3u8")
                                         
@@ -24,12 +28,34 @@ class ViewController: UIViewController {
         videoPlayer = AVPlayer(playerItem: playerItem)
         
         //Periodic Time Observation every 0.5 a second
-        timeObserverToken = videoPlayer?.addPeriodicTimeObserver(forInterval: CMTimeMake(value: 5,timescale: 10),
+        videoPlayerTimeObserverToken = videoPlayer?.addPeriodicTimeObserver(forInterval: CMTimeMake(value: 5,timescale: 10),
                                              queue: DispatchQueue.main) { [weak self] time in
             if let videoPlayer = self?.videoPlayer, let timeValue = self?.createTimeString(time: Float(videoPlayer.currentTime().seconds)) {
                 print("Playhead Time : \(timeValue)")
             }
         }
+        
+        //Status of Playback to observe
+        videoPlayerTimeControlStatusObserver = videoPlayer?.observe(\AVPlayer.timeControlStatus,
+                                                         options: [.initial, .new]) { player, anItem in
+            DispatchQueue.main.async {
+                switch player.timeControlStatus {
+                case .playing:
+                    print("Currently Playing....")
+                case .paused:
+                    print("Currently Paused....")
+                case .waitingToPlayAtSpecifiedRate:
+                    print("Waiting to Play....")
+                default:
+                    print("Unknown Status.....")
+                }
+            }
+        }
+        
+        NotificationCenter.default.addObserver(self,
+                                               selector: #selector(playerItemEnded),
+                                               name: Notification.Name.AVPlayerItemDidPlayToEndTime,
+                                               object: videoPlayer)
         
         let layer = AVPlayerLayer(player: videoPlayer)
         layer.frame = self.view.bounds
@@ -44,11 +70,16 @@ class ViewController: UIViewController {
     }
 
     override func viewWillDisappear(_ animated: Bool) {
-        if let timeObserverToken = timeObserverToken , let videoPlayer = videoPlayer {
+        if let timeObserverToken = videoPlayerTimeObserverToken , let videoPlayer = videoPlayer {
             videoPlayer.removeTimeObserver(timeObserverToken)
-            self.timeObserverToken = nil
+            self.videoPlayerTimeObserverToken = nil
+            self.videoPlayerEndedObserver = nil
         }
         super.viewWillDisappear(animated)
+    }
+    
+    @objc func playerItemEnded() {
+        print("The Current Item has Ended ")
     }
     
     func createTimeString(time: Float) -> String {
@@ -60,4 +91,3 @@ class ViewController: UIViewController {
         return formatter.string(from: components as DateComponents)!
     }
 }
-
